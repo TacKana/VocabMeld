@@ -1,0 +1,422 @@
+/**
+ * VocabMeld Options 脚本 - 自动保存版本
+ */
+
+document.addEventListener('DOMContentLoaded', async () => {
+  // API 预设
+  const API_PRESETS = {
+    openai: { endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o-mini' },
+    deepseek: { endpoint: 'https://api.deepseek.com/chat/completions', model: 'deepseek-chat' },
+    moonshot: { endpoint: 'https://api.moonshot.cn/v1/chat/completions', model: 'moonshot-v1-8k' },
+    groq: { endpoint: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama-3.1-8b-instant' },
+    ollama: { endpoint: 'http://localhost:11434/v1/chat/completions', model: 'qwen2.5:7b' }
+  };
+
+  const CEFR_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+
+  // 防抖保存函数
+  let saveTimeout;
+  function debouncedSave(delay = 500) {
+    clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(saveSettings, delay);
+  }
+
+  // DOM 元素
+  const elements = {
+    // 导航
+    navItems: document.querySelectorAll('.nav-item'),
+    sections: document.querySelectorAll('.settings-section'),
+
+    // API 配置
+    presetBtns: document.querySelectorAll('.preset-btn'),
+    apiEndpoint: document.getElementById('apiEndpoint'),
+    apiKey: document.getElementById('apiKey'),
+    modelName: document.getElementById('modelName'),
+    toggleApiKey: document.getElementById('toggleApiKey'),
+    testConnectionBtn: document.getElementById('testConnectionBtn'),
+    testResult: document.getElementById('testResult'),
+
+    // 学习偏好
+    nativeLanguage: document.getElementById('nativeLanguage'),
+    targetLanguage: document.getElementById('targetLanguage'),
+    difficultyLevel: document.getElementById('difficultyLevel'),
+    selectedDifficulty: document.getElementById('selectedDifficulty'),
+    intensityRadios: document.querySelectorAll('input[name="intensity"]'),
+
+    // 行为设置
+    autoProcess: document.getElementById('autoProcess'),
+    showPhonetic: document.getElementById('showPhonetic'),
+
+    // 站点规则
+    blacklistInput: document.getElementById('blacklistInput'),
+    whitelistInput: document.getElementById('whitelistInput'),
+
+    // 词汇管理
+    wordTabs: document.querySelectorAll('.word-tab'),
+    learnedList: document.getElementById('learnedList'),
+    memorizeList: document.getElementById('memorizeList'),
+    cachedList: document.getElementById('cachedList'),
+    learnedTabCount: document.getElementById('learnedTabCount'),
+    memorizeTabCount: document.getElementById('memorizeTabCount'),
+    cachedTabCount: document.getElementById('cachedTabCount'),
+    clearLearnedBtn: document.getElementById('clearLearnedBtn'),
+    clearMemorizeBtn: document.getElementById('clearMemorizeBtn'),
+    clearCacheBtn: document.getElementById('clearCacheBtn'),
+
+    // 统计
+    statTotalWords: document.getElementById('statTotalWords'),
+    statTodayWords: document.getElementById('statTodayWords'),
+    statLearnedWords: document.getElementById('statLearnedWords'),
+    statMemorizeWords: document.getElementById('statMemorizeWords'),
+    statCacheSize: document.getElementById('statCacheSize'),
+    statHitRate: document.getElementById('statHitRate'),
+    cacheProgress: document.getElementById('cacheProgress'),
+    resetTodayBtn: document.getElementById('resetTodayBtn'),
+    resetAllBtn: document.getElementById('resetAllBtn')
+  };
+
+  // 加载配置
+  async function loadSettings() {
+    chrome.storage.sync.get(null, (result) => {
+      // API 配置
+      elements.apiEndpoint.value = result.apiEndpoint || API_PRESETS.deepseek.endpoint;
+      elements.apiKey.value = result.apiKey || '';
+      elements.modelName.value = result.modelName || API_PRESETS.deepseek.model;
+      
+      // 学习偏好
+      elements.nativeLanguage.value = result.nativeLanguage || 'zh-CN';
+      elements.targetLanguage.value = result.targetLanguage || 'en';
+      
+      const diffIdx = CEFR_LEVELS.indexOf(result.difficultyLevel || 'B1');
+      elements.difficultyLevel.value = diffIdx >= 0 ? diffIdx : 2;
+      updateDifficultyLabel();
+      
+      const intensity = result.intensity || 'medium';
+      elements.intensityRadios.forEach(radio => {
+        radio.checked = radio.value === intensity;
+      });
+      
+      // 行为设置
+      elements.autoProcess.checked = result.autoProcess ?? false;
+      elements.showPhonetic.checked = result.showPhonetic ?? true;
+      
+      // 站点规则
+      elements.blacklistInput.value = (result.blacklist || []).join('\n');
+      elements.whitelistInput.value = (result.whitelist || []).join('\n');
+      
+      // 加载词汇列表
+      loadWordLists(result);
+      
+      // 加载统计
+      loadStats(result);
+    });
+  }
+
+  // 加载词汇列表
+  function loadWordLists(result) {
+    const learnedWords = result.learnedWords || [];
+    const memorizeList = result.memorizeList || [];
+    
+    // 更新计数
+    elements.learnedTabCount.textContent = learnedWords.length;
+    elements.memorizeTabCount.textContent = memorizeList.length;
+    
+    // 渲染已学会列表
+    renderWordList(elements.learnedList, learnedWords, 'learned');
+    
+    // 渲染需记忆列表
+    renderWordList(elements.memorizeList, memorizeList.map(w => ({ original: w.word, word: '', addedAt: w.addedAt })), 'memorize');
+    
+    // 加载缓存
+    chrome.storage.local.get('vocabmeld_word_cache', (data) => {
+      const cache = data.vocabmeld_word_cache || [];
+      elements.cachedTabCount.textContent = cache.length;
+      
+      const cacheWords = cache.map(item => {
+        const [word] = item.key.split(':');
+        return { original: word, word: item.translation, addedAt: item.timestamp };
+      });
+      renderWordList(elements.cachedList, cacheWords, 'cached');
+    });
+  }
+
+  // 渲染词汇列表
+  function renderWordList(container, words, type) {
+    if (words.length === 0) {
+      container.innerHTML = '<div class="empty-list">暂无词汇</div>';
+      return;
+    }
+
+    container.innerHTML = words.map(w => `
+      <div class="word-item">
+        <span class="word-original">${w.original}</span>
+        ${w.word ? `<span class="word-translation">${w.word}</span>` : ''}
+        <span class="word-date">${formatDate(w.addedAt)}</span>
+        ${type !== 'cached' ? `<button class="word-remove" data-word="${w.original}" data-type="${type}">&times;</button>` : ''}
+      </div>
+    `).join('');
+
+    // 绑定删除事件
+    container.querySelectorAll('.word-remove').forEach(btn => {
+      btn.addEventListener('click', () => removeWord(btn.dataset.word, btn.dataset.type));
+    });
+  }
+
+  // 格式化日期
+  function formatDate(timestamp) {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    return `${date.getMonth() + 1}/${date.getDate()}`;
+  }
+
+  // 删除词汇
+  async function removeWord(word, type) {
+    if (type === 'learned') {
+      chrome.storage.sync.get('learnedWords', (result) => {
+        const list = (result.learnedWords || []).filter(w => w.original !== word);
+        chrome.storage.sync.set({ learnedWords: list }, loadSettings);
+      });
+    } else if (type === 'memorize') {
+      chrome.storage.sync.get('memorizeList', (result) => {
+        const list = (result.memorizeList || []).filter(w => w.word !== word);
+        chrome.storage.sync.set({ memorizeList: list }, loadSettings);
+      });
+    }
+  }
+
+  // 加载统计数据
+  function loadStats(result) {
+    elements.statTotalWords.textContent = result.totalWords || 0;
+    elements.statTodayWords.textContent = result.todayWords || 0;
+    elements.statLearnedWords.textContent = (result.learnedWords || []).length;
+    elements.statMemorizeWords.textContent = (result.memorizeList || []).length;
+    
+    const hits = result.cacheHits || 0;
+    const misses = result.cacheMisses || 0;
+    const total = hits + misses;
+    const hitRate = total > 0 ? Math.round((hits / total) * 100) : 0;
+    elements.statHitRate.textContent = hitRate + '%';
+    
+    chrome.storage.local.get('vocabmeld_word_cache', (data) => {
+      const cacheSize = (data.vocabmeld_word_cache || []).length;
+      elements.statCacheSize.textContent = cacheSize;
+      elements.cacheProgress.style.width = (cacheSize / 2000 * 100) + '%';
+    });
+  }
+
+  // 保存设置（静默保存）
+  async function saveSettings() {
+    const settings = {
+      apiEndpoint: elements.apiEndpoint.value.trim(),
+      apiKey: elements.apiKey.value.trim(),
+      modelName: elements.modelName.value.trim(),
+      nativeLanguage: elements.nativeLanguage.value,
+      targetLanguage: elements.targetLanguage.value,
+      difficultyLevel: CEFR_LEVELS[elements.difficultyLevel.value],
+      intensity: document.querySelector('input[name="intensity"]:checked').value,
+      autoProcess: elements.autoProcess.checked,
+      showPhonetic: elements.showPhonetic.checked,
+      blacklist: elements.blacklistInput.value.split('\n').filter(s => s.trim()),
+      whitelist: elements.whitelistInput.value.split('\n').filter(s => s.trim())
+    };
+
+    try {
+      await chrome.storage.sync.set(settings);
+      console.log('[VocabMeld] Settings saved automatically');
+    } catch (error) {
+      console.error('[VocabMeld] Failed to save settings:', error);
+    }
+  }
+
+  // 添加自动保存事件监听器
+  function addAutoSaveListeners() {
+    // 文本输入框 - 失焦时保存
+    const textInputs = [
+      elements.apiEndpoint,
+      elements.apiKey,
+      elements.modelName,
+      elements.blacklistInput,
+      elements.whitelistInput
+    ];
+
+    textInputs.forEach(input => {
+      input.addEventListener('blur', () => debouncedSave());
+      input.addEventListener('change', () => debouncedSave());
+    });
+
+    // 下拉框 - 改变时保存
+    const selects = [
+      elements.nativeLanguage,
+      elements.targetLanguage
+    ];
+
+    selects.forEach(select => {
+      select.addEventListener('change', () => debouncedSave(200));
+    });
+
+    // 滑块 - 改变时保存
+    elements.difficultyLevel.addEventListener('input', () => debouncedSave(200));
+    elements.difficultyLevel.addEventListener('change', () => debouncedSave(200));
+
+    // 单选按钮 - 改变时保存
+    elements.intensityRadios.forEach(radio => {
+      radio.addEventListener('change', () => debouncedSave(200));
+    });
+
+    // 开关 - 改变时保存
+    const checkboxes = [
+      elements.autoProcess,
+      elements.showPhonetic
+    ];
+
+    checkboxes.forEach(checkbox => {
+      checkbox.addEventListener('change', () => debouncedSave(200));
+    });
+  }
+
+  // 更新难度标签
+  function updateDifficultyLabel() {
+    const level = CEFR_LEVELS[elements.difficultyLevel.value];
+    elements.selectedDifficulty.textContent = level;
+  }
+
+  // 事件绑定
+  function bindEvents() {
+    // 导航切换
+    elements.navItems.forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.preventDefault();
+        const section = item.dataset.section;
+
+        elements.navItems.forEach(n => n.classList.remove('active'));
+        elements.sections.forEach(s => s.classList.remove('active'));
+
+        item.classList.add('active');
+        document.getElementById(section).classList.add('active');
+      });
+    });
+
+    // 预设按钮
+    elements.presetBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const preset = API_PRESETS[btn.dataset.preset];
+        if (preset) {
+          elements.apiEndpoint.value = preset.endpoint;
+          elements.modelName.value = preset.model;
+
+          elements.presetBtns.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+
+          // 预设按钮改变时立即保存
+          debouncedSave(200);
+        }
+      });
+    });
+
+    // 切换 API 密钥可见性
+    elements.toggleApiKey.addEventListener('click', () => {
+      const type = elements.apiKey.type === 'password' ? 'text' : 'password';
+      elements.apiKey.type = type;
+    });
+
+    // 测试连接
+    elements.testConnectionBtn.addEventListener('click', async () => {
+      elements.testConnectionBtn.disabled = true;
+      elements.testResult.textContent = '测试中...';
+      elements.testResult.className = 'test-result';
+
+      chrome.runtime.sendMessage({
+        action: 'testApi',
+        endpoint: elements.apiEndpoint.value,
+        apiKey: elements.apiKey.value,
+        model: elements.modelName.value
+      }, (response) => {
+        elements.testConnectionBtn.disabled = false;
+        if (response?.success) {
+          elements.testResult.textContent = '✓ 连接成功';
+          elements.testResult.className = 'test-result success';
+        } else {
+          elements.testResult.textContent = '✗ ' + (response?.message || '连接失败');
+          elements.testResult.className = 'test-result error';
+        }
+      });
+    });
+
+    // 难度滑块
+    elements.difficultyLevel.addEventListener('input', updateDifficultyLabel);
+
+    // 词汇标签切换
+    elements.wordTabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const tabName = tab.dataset.tab;
+
+        elements.wordTabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+
+        document.querySelectorAll('.word-list').forEach(list => {
+          list.classList.toggle('hidden', list.dataset.tab !== tabName);
+        });
+      });
+    });
+
+    // 清空按钮
+    elements.clearLearnedBtn.addEventListener('click', () => {
+      if (confirm('确定要清空所有已学会词汇吗？')) {
+        chrome.runtime.sendMessage({ action: 'clearLearnedWords' }, () => {
+          loadSettings();
+          debouncedSave(200);
+        });
+      }
+    });
+
+    elements.clearMemorizeBtn.addEventListener('click', () => {
+      if (confirm('确定要清空需记忆列表吗？')) {
+        chrome.runtime.sendMessage({ action: 'clearMemorizeList' }, () => {
+          loadSettings();
+          debouncedSave(200);
+        });
+      }
+    });
+
+    elements.clearCacheBtn.addEventListener('click', () => {
+      if (confirm('确定要清空词汇缓存吗？')) {
+        chrome.runtime.sendMessage({ action: 'clearCache' }, () => {
+          loadSettings();
+          debouncedSave(200);
+        });
+      }
+    });
+
+    // 统计重置
+    elements.resetTodayBtn.addEventListener('click', () => {
+      chrome.storage.sync.set({ todayWords: 0 }, () => {
+        loadSettings();
+        debouncedSave(200);
+      });
+    });
+
+    elements.resetAllBtn.addEventListener('click', () => {
+      if (confirm('确定要重置所有数据吗？这将清空所有统计和词汇列表。')) {
+        chrome.storage.sync.set({
+          totalWords: 0,
+          todayWords: 0,
+          cacheHits: 0,
+          cacheMisses: 0,
+          learnedWords: [],
+          memorizeList: []
+        });
+        chrome.storage.local.remove('vocabmeld_word_cache', () => {
+          loadSettings();
+          debouncedSave(200);
+        });
+      }
+    });
+
+    // 添加自动保存事件监听器
+    addAutoSaveListeners();
+  }
+
+  // 初始化
+  bindEvents();
+  loadSettings();
+});
