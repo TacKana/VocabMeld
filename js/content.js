@@ -125,6 +125,7 @@
           intensity: result.intensity || 'medium',
           autoProcess: result.autoProcess ?? false,
           showPhonetic: result.showPhonetic ?? true,
+          showAddMemorize: result.showAddMemorize ?? true,
           translationStyle: result.translationStyle || 'translation-original',
           theme: result.theme || 'dark',
           enabled: result.enabled ?? true,
@@ -1386,6 +1387,12 @@ ${uncached.join(', ')}
     // 选择文本显示添加按钮
     document.addEventListener('mouseup', (e) => {
       if (e.target.closest('.vocabmeld-selection-popup')) return;
+      
+      // 如果关闭了选中添加功能，直接隐藏弹窗
+      if (!config?.showAddMemorize) {
+        if (selectionPopup) selectionPopup.style.display = 'none';
+        return;
+      }
       
       setTimeout(() => {
         const selection = window.getSelection();
