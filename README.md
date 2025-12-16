@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="preview.png" alt="VocabMeld Preview" width="100%">
+  <img src="assets/preview.png" alt="VocabMeld Preview" width="100%">
 </p>
 
 ---
@@ -36,8 +36,8 @@ VocabMeld 从以下优秀项目中汲取灵感，并在多个维度上进行了�
 
 | 项目 | 核心优势 | 主要局限性 |
 |------|----------|------------|
-| **fies** | 综合效果优秀，单词难度划分合理 | 闭源架构、无法使用自定义大模型 API |
-| **illa-helper** | 类似 fies 开源版本 | 翻译质量一般、经常误译短语、难度划分不准、不支持标记已学单词 |
+| **Ries** | 综合效果优秀，单词难度划分合理 | 闭源架构、无法使用自定义大模型 API |
+| **illa-helper** | 类似 Ries 开源版本 | 翻译质量一般、经常误译短语、难度划分不准、不支持标记已学单词 |
 | **qiayi** | 较早出现的沉浸式局部翻译插件 | 长期未维护、无 AI 能力、整体效果一般 |
 
 ### 核心改进点
@@ -384,6 +384,16 @@ function isDifficultyCompatible(wordDifficulty, userDifficulty) {
 ### 本地开发
 1. 修改代码后，在 `chrome://extensions/` 页面点击刷新按钮
 2. 或使用扩展开发工具的热重载功能
+
+---
+
+## 打赏
+
+万水千山总是情，一块几块都是情。本软件完全开源，用爱发电，如果你愿意，可以以打赏的方式支持我一下：
+
+<p align="center">
+  <img src="assets/wechat.jpg" alt="微信打赏" width="300">
+</p>
 
 ---
 
