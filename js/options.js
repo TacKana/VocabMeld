@@ -48,6 +48,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     showPhonetic: document.getElementById('showPhonetic'),
     translationStyleRadios: document.querySelectorAll('input[name="translationStyle"]'),
     themeRadios: document.querySelectorAll('input[name="theme"]'),
+    ttsVoice: document.getElementById('ttsVoice'),
+    ttsRate: document.getElementById('ttsRate'),
+    ttsRateValue: document.getElementById('ttsRateValue'),
+    testVoiceBtn: document.getElementById('testVoiceBtn'),
 
     // 站点规则
     blacklistInput: document.getElementById('blacklistInput'),
@@ -87,6 +91,68 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 应用主题
   function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
+  }
+
+  // 加载可用声音列表（只显示学习语言相关的声音）
+  function loadVoices(selectedVoice) {
+    chrome.runtime.sendMessage({ action: 'getVoices' }, (response) => {
+      const voices = response?.voices || [];
+      const select = elements.ttsVoice;
+      const targetLang = elements.targetLanguage.value;
+      
+      // 获取目标语言的语言代码前缀
+      const langPrefix = getLangPrefix(targetLang);
+      
+      // 清空现有选项，保留默认
+      select.innerHTML = '<option value="">系统默认</option>';
+      
+      // 只筛选匹配学习语言的声音
+      const matchingVoices = voices.filter(voice => {
+        const voiceLang = voice.lang || '';
+        return voiceLang.startsWith(langPrefix);
+      });
+      
+      // 如果没有匹配的声音，显示提示
+      if (matchingVoices.length === 0) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = '无可用声音';
+        option.disabled = true;
+        select.appendChild(option);
+        return;
+      }
+      
+      // 添加匹配的声音选项
+      matchingVoices.forEach(voice => {
+        const option = document.createElement('option');
+        option.value = voice.voiceName;
+        // 简化显示名称
+        const displayName = voice.voiceName
+          .replace(/Google\s*/i, '')
+          .replace(/Microsoft\s*/i, '')
+          .replace(/Apple\s*/i, '');
+        option.textContent = displayName;
+        if (voice.voiceName === selectedVoice) {
+          option.selected = true;
+        }
+        select.appendChild(option);
+      });
+    });
+  }
+
+  // 获取语言代码前缀
+  function getLangPrefix(langCode) {
+    const prefixMap = {
+      'en': 'en',
+      'zh-CN': 'zh',
+      'zh-TW': 'zh',
+      'ja': 'ja',
+      'ko': 'ko',
+      'fr': 'fr',
+      'de': 'de',
+      'es': 'es'
+    };
+    return prefixMap[langCode] || langCode.split('-')[0];
   }
 
   // 加载配置
@@ -129,6 +195,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       // 站点规则
       elements.blacklistInput.value = (result.blacklist || []).join('\n');
       elements.whitelistInput.value = (result.whitelist || []).join('\n');
+      
+      // 发音设置
+      elements.ttsRate.value = result.ttsRate || 1.0;
+      elements.ttsRateValue.textContent = (result.ttsRate || 1.0).toFixed(1);
+      
+      // 加载可用声音列表
+      loadVoices(result.ttsVoice || '');
       
       // 加载词汇列表
       loadWordLists(result);
@@ -204,6 +277,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     container.innerHTML = words.map(w => `
       <div class="word-item">
+        <button class="word-speak" data-word="${w.original}" title="播放发音">
+          <svg viewBox="0 0 24 24" width="16" height="16">
+            <path fill="currentColor" d="M14,3.23V5.29C16.89,6.15 19,8.83 19,12C19,15.17 16.89,17.84 14,18.7V20.77C18,19.86 21,16.28 21,12C21,7.72 18,4.14 14,3.23M16.5,12C16.5,10.23 15.5,8.71 14,7.97V16C15.5,15.29 16.5,13.76 16.5,12M3,9V15H7L12,20V4L7,9H3Z"/>
+          </svg>
+        </button>
         <span class="word-original">${w.original}</span>
         ${w.word ? `<span class="word-translation">${w.word}</span>` : ''}
         ${w.difficulty ? `<span class="word-difficulty difficulty-${w.difficulty.toLowerCase()}">${w.difficulty}</span>` : ''}
@@ -212,10 +290,32 @@ document.addEventListener('DOMContentLoaded', async () => {
       </div>
     `).join('');
 
+    // 绑定发音事件
+    container.querySelectorAll('.word-speak').forEach(btn => {
+      btn.addEventListener('click', () => speakWord(btn.dataset.word));
+    });
+
     // 绑定删除事件
     container.querySelectorAll('.word-remove').forEach(btn => {
       btn.addEventListener('click', () => removeWord(btn.dataset.word, btn.dataset.type));
     });
+  }
+
+  // 发音功能
+  function speakWord(word) {
+    if (!word) return;
+    
+    // 检测语言
+    const isChinese = /[\u4e00-\u9fff]/.test(word);
+    const isJapanese = /[\u3040-\u309f\u30a0-\u30ff]/.test(word);
+    const isKorean = /[\uac00-\ud7af]/.test(word);
+    
+    let lang = 'en-US';
+    if (isChinese) lang = 'zh-CN';
+    else if (isJapanese) lang = 'ja-JP';
+    else if (isKorean) lang = 'ko-KR';
+    
+    chrome.runtime.sendMessage({ action: 'speak', text: word, lang });
   }
 
   // 搜索和筛选已学会词汇
@@ -355,6 +455,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       autoProcess: elements.autoProcess.checked,
       showPhonetic: elements.showPhonetic.checked,
       translationStyle: document.querySelector('input[name="translationStyle"]:checked').value,
+      ttsVoice: elements.ttsVoice.value,
+      ttsRate: parseFloat(elements.ttsRate.value),
       blacklist: elements.blacklistInput.value.split('\n').filter(s => s.trim()),
       whitelist: elements.whitelistInput.value.split('\n').filter(s => s.trim())
     };
@@ -384,13 +486,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // 下拉框 - 改变时保存
-    const selects = [
-      elements.nativeLanguage,
-      elements.targetLanguage
-    ];
-
-    selects.forEach(select => {
-      select.addEventListener('change', () => debouncedSave(200));
+    elements.nativeLanguage.addEventListener('change', () => debouncedSave(200));
+    
+    // 学习语言改变时，重新加载声音列表
+    elements.targetLanguage.addEventListener('change', () => {
+      debouncedSave(200);
+      // 重新加载声音列表
+      loadVoices(elements.ttsVoice.value);
     });
 
     // 滑块 - 改变时保存
@@ -422,6 +524,47 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     checkboxes.forEach(checkbox => {
       checkbox.addEventListener('change', () => debouncedSave(200));
+    });
+
+    // 发音设置
+    elements.ttsVoice.addEventListener('change', () => debouncedSave(200));
+    
+    elements.ttsRate.addEventListener('input', () => {
+      elements.ttsRateValue.textContent = parseFloat(elements.ttsRate.value).toFixed(1);
+    });
+    elements.ttsRate.addEventListener('change', () => debouncedSave(200));
+    
+    // 测试发音按钮
+    elements.testVoiceBtn.addEventListener('click', () => {
+      const targetLang = elements.targetLanguage.value;
+      const testTexts = {
+        'en': 'Hello, this is a voice test.',
+        'zh-CN': '你好，这是一个语音测试。',
+        'zh-TW': '你好，這是一個語音測試。',
+        'ja': 'こんにちは、これは音声テストです。',
+        'ko': '안녕하세요, 음성 테스트입니다.',
+        'fr': 'Bonjour, ceci est un test vocal.',
+        'de': 'Hallo, dies ist ein Sprachtest.',
+        'es': 'Hola, esta es una prueba de voz.'
+      };
+      const langCodes = {
+        'en': 'en-US',
+        'zh-CN': 'zh-CN',
+        'zh-TW': 'zh-TW',
+        'ja': 'ja-JP',
+        'ko': 'ko-KR',
+        'fr': 'fr-FR',
+        'de': 'de-DE',
+        'es': 'es-ES'
+      };
+      const testText = testTexts[targetLang] || testTexts['en'];
+      const lang = langCodes[targetLang] || 'en-US';
+      
+      chrome.runtime.sendMessage({ 
+        action: 'speak', 
+        text: testText, 
+        lang: lang
+      });
     });
   }
 

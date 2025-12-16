@@ -93,12 +93,46 @@ chrome.commands.onCommand.addListener((command, tab) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // 语音合成
   if (message.action === 'speak') {
-    chrome.tts.speak(message.text, {
-      lang: message.lang || 'en-US',
-      rate: 0.9,
-      pitch: 1.0
+    const text = message.text;
+    const lang = message.lang || 'en-US';
+    
+    // 获取用户配置的语音设置
+    chrome.storage.sync.get(['ttsRate', 'ttsVoice'], (settings) => {
+      const rate = settings.ttsRate || 1.0;
+      const preferredVoice = settings.ttsVoice || '';
+      
+      // 先停止之前的朗读
+      chrome.tts.stop();
+      
+      const options = {
+        lang: lang,
+        rate: rate,
+        pitch: 1.0
+      };
+      
+      // 如果用户指定了声音，使用用户的选择
+      if (preferredVoice) {
+        options.voiceName = preferredVoice;
+      }
+      
+      chrome.tts.speak(text, options, () => {
+        if (chrome.runtime.lastError) {
+          console.error('[VocabMeld] TTS Error:', chrome.runtime.lastError.message);
+          sendResponse({ success: false, error: chrome.runtime.lastError.message });
+        } else {
+          sendResponse({ success: true });
+        }
+      });
     });
-    sendResponse({ success: true });
+    
+    return true;
+  }
+  
+  // 获取可用的 TTS 声音列表
+  if (message.action === 'getVoices') {
+    chrome.tts.getVoices((voices) => {
+      sendResponse({ voices: voices || [] });
+    });
     return true;
   }
   
