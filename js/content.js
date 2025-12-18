@@ -550,6 +550,15 @@
     element.parentNode.replaceChild(textNode, element);
   }
 
+  // 恢复页面上所有相同单词的原文
+  function restoreAllSameWord(originalWord) {
+    document.querySelectorAll('.vocabmeld-translated').forEach(el => {
+      if (el.getAttribute('data-original')?.toLowerCase() === originalWord.toLowerCase()) {
+        restoreOriginal(el);
+      }
+    });
+  }
+
   function restoreAll() {
     document.querySelectorAll('.vocabmeld-translated').forEach(restoreOriginal);
     document.querySelectorAll('[data-vocabmeld-processed]').forEach(el => el.removeAttribute('data-vocabmeld-processed'));
@@ -645,9 +654,15 @@
       }
     }
 
-    // 过滤缓存结果（按难度）
+    // 获取已学会单词列表
+    const learnedWordsSet = new Set((config.learnedWords || []).map(w => w.original.toLowerCase()));
+    
+    // 过滤缓存结果（按难度，排除已学会单词）
     const filteredCached = cached
-      .filter(c => isDifficultyCompatible(c.difficulty || 'B1', config.difficultyLevel))
+      .filter(c => 
+        isDifficultyCompatible(c.difficulty || 'B1', config.difficultyLevel) &&
+        !learnedWordsSet.has(c.word.toLowerCase())
+      )
       .map(c => {
         const idx = text.toLowerCase().indexOf(c.word.toLowerCase());
         return { 
@@ -832,22 +847,27 @@ ${filteredText}
           };
         });
 
-        // 合并缓存结果（去重，避免与已显示的缓存结果重复）
+        // 合并缓存结果（去重，避免与已显示的缓存结果重复，排除已学会单词）
         const immediateWords = new Set(immediateResults.map(r => r.original.toLowerCase()));
+        const currentLearnedWords = new Set((config.learnedWords || []).map(w => w.original.toLowerCase()));
         const cachedResults = cached
           .filter(c => 
             !immediateWords.has(c.word.toLowerCase()) && 
             !correctedResults.some(r => r.original.toLowerCase() === c.word.toLowerCase()) &&
+            !currentLearnedWords.has(c.word.toLowerCase()) &&
             isDifficultyCompatible(c.difficulty || 'B1', config.difficultyLevel)
           )
           .map(c => {
             const idx = text.toLowerCase().indexOf(c.word.toLowerCase());
             return { original: c.word, translation: c.translation, phonetic: c.phonetic, difficulty: c.difficulty, position: idx, fromCache: true };
           });
+        
+        // API 结果也要过滤已学会单词
+        const filteredCorrectedResults = correctedResults.filter(r => !currentLearnedWords.has(r.original.toLowerCase()));
 
         // 合并结果：补充的缓存结果 + API结果
         // 限制异步替换数量（如果缓存已满足配置或文本极少，最多只替换1个词）
-        const mergedResults = [...cachedResults, ...correctedResults];
+        const mergedResults = [...cachedResults, ...filteredCorrectedResults];
         return mergedResults.slice(0, maxAsyncReplacements);
 
       } catch (error) {
@@ -1407,8 +1427,8 @@ ${uncached.join(', ')}
         const translation = target.getAttribute('data-translation');
         const difficulty = target.getAttribute('data-difficulty') || 'B1';
         await addToWhitelist(original, translation, difficulty);
-        restoreOriginal(target);
-        hideTooltip(); // 隐藏tooltip
+        restoreAllSameWord(original); // 恢复页面上所有相同单词
+        hideTooltip();
         showToast(`"${original}" 已标记为已学会`);
       }
     });
