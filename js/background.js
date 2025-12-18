@@ -216,12 +216,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // 测试 API 连接
 async function testApiConnection(endpoint, apiKey, model) {
   try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+    
     const response = await fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
+      headers,
       body: JSON.stringify({
         model: model,
         messages: [{ role: 'user', content: 'Say OK' }],

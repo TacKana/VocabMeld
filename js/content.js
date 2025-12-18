@@ -68,8 +68,17 @@
 
     if (japaneseCount / total > 0.1) return 'ja';
     if (koreanCount / total > 0.1) return 'ko';
-    if (chineseCount / total > 0.3) return 'zh-CN';
+    if (chineseCount / total > 0.3) return 'zh'; // 返回通用中文标识
     return 'en';
+  }
+
+  // 判断检测到的语言是否与用户设置的母语匹配
+  function isNativeLanguage(detectedLang, nativeLang) {
+    // 中文简繁体视为同一语系
+    if (detectedLang === 'zh' && (nativeLang === 'zh-CN' || nativeLang === 'zh-TW')) {
+      return true;
+    }
+    return detectedLang === nativeLang;
   }
 
   function isCodeText(text) {
@@ -549,7 +558,7 @@
 
   // ============ API 调用 ============
   async function translateText(text) {
-    if (!config.apiKey || !config.apiEndpoint) {
+    if (!config.apiEndpoint) {
       throw new Error('API 未配置');
     }
 
@@ -558,8 +567,10 @@
       await loadWordCache();
     }
 
-    const sourceLang = detectLanguage(text);
-    const targetLang = sourceLang === config.nativeLanguage ? config.targetLanguage : config.nativeLanguage;
+    const detectedLang = detectLanguage(text);
+    const isNative = isNativeLanguage(detectedLang, config.nativeLanguage);
+    const sourceLang = isNative ? config.nativeLanguage : detectedLang;
+    const targetLang = isNative ? config.targetLanguage : config.nativeLanguage;
     const maxReplacements = INTENSITY_CONFIG[config.intensity]?.maxPerParagraph || 8;
 
     // 检查缓存 - 只检查有意义的词汇（排除常见停用词）
@@ -719,12 +730,12 @@ ${filteredText}
 ## 输出：
 只返回 JSON 数组，不要其他内容。`;
 
+        const headers = { 'Content-Type': 'application/json' };
+        if (config.apiKey) headers['Authorization'] = `Bearer ${config.apiKey}`;
+        
         const response = await fetch(config.apiEndpoint, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${config.apiKey}`
-          },
+          headers,
           body: JSON.stringify({
             model: config.modelName,
             messages: [
@@ -848,12 +859,14 @@ ${filteredText}
 
   // ============ 特定单词处理 ============
   async function translateSpecificWords(targetWords) {
-    if (!config.apiKey || !config.apiEndpoint || !targetWords?.length) {
+    if (!config.apiEndpoint || !targetWords?.length) {
       return [];
     }
 
-    const sourceLang = detectLanguage(targetWords.join(' '));
-    const targetLang = sourceLang === config.nativeLanguage ? config.targetLanguage : config.nativeLanguage;
+    const detectedLang = detectLanguage(targetWords.join(' '));
+    const isNative = isNativeLanguage(detectedLang, config.nativeLanguage);
+    const sourceLang = isNative ? config.nativeLanguage : detectedLang;
+    const targetLang = isNative ? config.targetLanguage : config.nativeLanguage;
 
     const uncached = [];
     const cached = [];
@@ -903,12 +916,12 @@ ${uncached.join(', ')}
 ## 输出：
 只返回 JSON 数组，不要其他内容。`;
 
+        const headers = { 'Content-Type': 'application/json' };
+        if (config.apiKey) headers['Authorization'] = `Bearer ${config.apiKey}`;
+        
         const response = await fetch(config.apiEndpoint, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${config.apiKey}`
-          },
+          headers,
           body: JSON.stringify({
             model: config.modelName,
             messages: [
@@ -1514,7 +1527,7 @@ ${uncached.join(', ')}
     setupEventListeners();
     
     // 自动处理 - 只有在 API 配置好且开启自动处理时才执行
-    if (config.autoProcess && config.enabled && config.apiKey) {
+    if (config.autoProcess && config.enabled && config.apiEndpoint) {
       setTimeout(() => processPage(), 1000);
     }
     
