@@ -1494,7 +1494,7 @@ ${uncached.join(', ')}
       // 延迟隐藏，给用户时间移动到 tooltip 上
       tooltipHideTimeout = setTimeout(() => {
         if (tooltip) tooltip.style.display = 'none';
-      }, 150);
+      }, 300);
     }
   }
   
