@@ -201,8 +201,8 @@ class TextReplacer {
     const original = element.getAttribute('data-original');
     const translation = element.getAttribute('data-translation');
 
-    // 添加到白名单
-    await storage.addToWhitelist({ original, word: translation });
+    // 添加到白名单 - 标记原文（用户正在学习的单词）为已学会
+    await storage.addToWhitelist({ original, word: original });
 
     // 恢复原文
     this.restoreOriginal(element);

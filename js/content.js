@@ -1516,13 +1516,25 @@ ${uncached.join(', ')}
       }
     });
 
-    // 左键点击发音
+    // 左键点击发音（始终发音目标语言）
     document.addEventListener('click', (e) => {
       const target = e.target.closest('.vocabmeld-translated');
       if (target) {
-        const word = target.getAttribute('data-translation');
+        const original = target.getAttribute('data-original');
+        const translation = target.getAttribute('data-translation');
+        
+        // 检测 original 是否是目标语言
+        const originalLang = detectLanguage(original);
+        const isOriginalTargetLang = (originalLang === 'en' && config.targetLanguage === 'en') ||
+                                     (originalLang === 'zh' && (config.targetLanguage === 'zh-CN' || config.targetLanguage === 'zh-TW')) ||
+                                     (originalLang === 'ja' && config.targetLanguage === 'ja') ||
+                                     (originalLang === 'ko' && config.targetLanguage === 'ko');
+        
+        // 选择目标语言的文本进行发音
+        const word = isOriginalTargetLang ? original : translation;
         const lang = config.targetLanguage === 'en' ? 'en-US' : 
                      config.targetLanguage === 'zh-CN' ? 'zh-CN' :
+                     config.targetLanguage === 'zh-TW' ? 'zh-TW' :
                      config.targetLanguage === 'ja' ? 'ja-JP' :
                      config.targetLanguage === 'ko' ? 'ko-KR' : 'en-US';
         
