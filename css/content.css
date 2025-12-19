@@ -204,6 +204,68 @@
   margin: 0 !important;
 }
 
+.vocabmeld-tooltip .vocabmeld-tooltip-actions {
+  display: flex !important;
+  gap: 8px !important;
+  padding-top: 10px !important;
+  border-top: 1px solid #334155 !important;
+  margin-top: 8px !important;
+}
+
+.vocabmeld-tooltip .vocabmeld-tooltip-btn {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 32px !important;
+  height: 32px !important;
+  border: none !important;
+  border-radius: 6px !important;
+  background: #334155 !important;
+  color: #94a3b8 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+.vocabmeld-tooltip .vocabmeld-tooltip-btn:hover {
+  background: #475569 !important;
+  color: #f8fafc !important;
+}
+
+.vocabmeld-tooltip .vocabmeld-btn-speak:hover {
+  background: #3b82f6 !important;
+  color: white !important;
+}
+
+.vocabmeld-tooltip .vocabmeld-btn-memorize:hover {
+  background: #ec4899 !important;
+  color: white !important;
+}
+
+.vocabmeld-tooltip .vocabmeld-btn-memorize.active {
+  background: #ec4899 !important;
+  color: white !important;
+}
+
+.vocabmeld-tooltip .vocabmeld-btn-learned:hover {
+  background: #22c55e !important;
+  color: white !important;
+}
+
+/* Light theme button styles */
+.vocabmeld-tooltip[data-theme="light"] .vocabmeld-tooltip-actions {
+  border-top: 1px solid #e2e8f0 !important;
+}
+
+.vocabmeld-tooltip[data-theme="light"] .vocabmeld-tooltip-btn {
+  background: #f1f5f9 !important;
+  color: #64748b !important;
+}
+
+.vocabmeld-tooltip[data-theme="light"] .vocabmeld-tooltip-btn:hover {
+  background: #e2e8f0 !important;
+  color: #1e293b !important;
+}
+
 .vocabmeld-toast {
   position: fixed !important;
   z-index: 2147483647 !important;

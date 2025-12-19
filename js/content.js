@@ -1444,6 +1444,11 @@ ${uncached.join(', ')}
     const translation = element.getAttribute('data-translation');
     const phonetic = element.getAttribute('data-phonetic');
     const difficulty = element.getAttribute('data-difficulty');
+    
+    // 检查是否已在记忆列表中
+    const isInMemorizeList = (config.memorizeList || []).some(w => 
+      w.word.toLowerCase() === original.toLowerCase()
+    );
 
     tooltip.innerHTML = `
       <div class="vocabmeld-tooltip-header">
@@ -1452,7 +1457,26 @@ ${uncached.join(', ')}
       </div>
       ${phonetic && config.showPhonetic ? `<div class="vocabmeld-tooltip-phonetic">${phonetic}</div>` : ''}
       <div class="vocabmeld-tooltip-original">原文: ${original}</div>
-      <div class="vocabmeld-tooltip-tip">左键点击发音 · 右键标记已学会</div>
+      <div class="vocabmeld-tooltip-actions">
+        <button class="vocabmeld-tooltip-btn vocabmeld-btn-speak" data-original="${original}" data-translation="${translation}" title="发音">
+          <svg viewBox="0 0 24 24" width="16" height="16">
+            <path fill="currentColor" d="M14,3.23V5.29C16.89,6.15 19,8.83 19,12C19,15.17 16.89,17.84 14,18.7V20.77C18,19.86 21,16.28 21,12C21,7.72 18,4.14 14,3.23M16.5,12C16.5,10.23 15.5,8.71 14,7.97V16C15.5,15.29 16.5,13.76 16.5,12M3,9V15H7L12,20V4L7,9H3Z"/>
+          </svg>
+        </button>
+        <button class="vocabmeld-tooltip-btn vocabmeld-btn-memorize ${isInMemorizeList ? 'active' : ''}" data-original="${original}" title="${isInMemorizeList ? '已在记忆列表' : '添加到记忆列表'}">
+          <svg viewBox="0 0 24 24" width="16" height="16">
+            ${isInMemorizeList 
+              ? '<path fill="currentColor" d="M12,21.35L10.55,20.03C5.4,15.36 2,12.27 2,8.5C2,5.41 4.42,3 7.5,3C9.24,3 10.91,3.81 12,5.08C13.09,3.81 14.76,3 16.5,3C19.58,3 22,5.41 22,8.5C22,12.27 18.6,15.36 13.45,20.03L12,21.35Z"/>'
+              : '<path fill="currentColor" d="M12.1,18.55L12,18.65L11.89,18.55C7.14,14.24 4,11.39 4,8.5C4,6.5 5.5,5 7.5,5C9.04,5 10.54,6 11.07,7.36H12.93C13.46,6 14.96,5 16.5,5C18.5,5 20,6.5 20,8.5C20,11.39 16.86,14.24 12.1,18.55M16.5,3C14.76,3 13.09,3.81 12,5.08C10.91,3.81 9.24,3 7.5,3C4.42,3 2,5.41 2,8.5C2,12.27 5.4,15.36 10.55,20.03L12,21.35L13.45,20.03C18.6,15.36 22,12.27 22,8.5C22,5.41 19.58,3 16.5,3Z"/>'
+            }
+          </svg>
+        </button>
+        <button class="vocabmeld-tooltip-btn vocabmeld-btn-learned" data-original="${original}" data-translation="${translation}" data-difficulty="${difficulty}" title="标记已学会">
+          <svg viewBox="0 0 24 24" width="16" height="16">
+            <path fill="currentColor" d="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z"/>
+          </svg>
+        </button>
+      </div>
     `;
 
     const rect = element.getBoundingClientRect();
@@ -1529,12 +1553,15 @@ ${uncached.join(', ')}
       }
     });
 
-    // 左键点击发音（始终发音目标语言）
+    // tooltip 按钮点击事件
     document.addEventListener('click', (e) => {
-      const target = e.target.closest('.vocabmeld-translated');
-      if (target) {
-        const original = target.getAttribute('data-original');
-        const translation = target.getAttribute('data-translation');
+      // 发音按钮
+      const speakBtn = e.target.closest('.vocabmeld-btn-speak');
+      if (speakBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const original = speakBtn.getAttribute('data-original');
+        const translation = speakBtn.getAttribute('data-translation');
         
         // 检测 original 是否是目标语言
         const originalLang = detectLanguage(original);
@@ -1543,7 +1570,6 @@ ${uncached.join(', ')}
                                      (originalLang === 'ja' && config.targetLanguage === 'ja') ||
                                      (originalLang === 'ko' && config.targetLanguage === 'ko');
         
-        // 选择目标语言的文本进行发音
         const word = isOriginalTargetLang ? original : translation;
         const lang = config.targetLanguage === 'en' ? 'en-US' : 
                      config.targetLanguage === 'zh-CN' ? 'zh-CN' :
@@ -1552,6 +1578,45 @@ ${uncached.join(', ')}
                      config.targetLanguage === 'ko' ? 'ko-KR' : 'en-US';
         
         chrome.runtime.sendMessage({ action: 'speak', text: word, lang });
+        return;
+      }
+      
+      // 收藏/记忆按钮
+      const memorizeBtn = e.target.closest('.vocabmeld-btn-memorize');
+      if (memorizeBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const original = memorizeBtn.getAttribute('data-original');
+        const isActive = memorizeBtn.classList.contains('active');
+        
+        if (!isActive) {
+          addToMemorizeList(original);
+          memorizeBtn.classList.add('active');
+          memorizeBtn.title = '已在记忆列表';
+          // 更新图标为实心
+          memorizeBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" width="16" height="16">
+              <path fill="currentColor" d="M12,21.35L10.55,20.03C5.4,15.36 2,12.27 2,8.5C2,5.41 4.42,3 7.5,3C9.24,3 10.91,3.81 12,5.08C13.09,3.81 14.76,3 16.5,3C19.58,3 22,5.41 22,8.5C22,12.27 18.6,15.36 13.45,20.03L12,21.35Z"/>
+            </svg>
+          `;
+        }
+        return;
+      }
+      
+      // 已学会按钮
+      const learnedBtn = e.target.closest('.vocabmeld-btn-learned');
+      if (learnedBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const original = learnedBtn.getAttribute('data-original');
+        const translation = learnedBtn.getAttribute('data-translation');
+        const difficulty = learnedBtn.getAttribute('data-difficulty') || 'B1';
+        
+        addToWhitelist(original, translation, difficulty);
+        restoreAllSameWord(original);
+        hideTooltip();
+        showToast(`"${original}" 已标记为已学会`);
+        return;
       }
     });
 
